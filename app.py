@@ -15,8 +15,7 @@ if not os.path.exists(FILE_PATH):
     ])
     df_empty.to_csv(FILE_PATH, index=False)
 
-# --- سیستم احراز هویت (ساده) ---
-# در نسخه واقعی، این بخش باید به دیتابیس امن متصل شود
+# --- سیستم احراز هویت (اصلاح شده) ---
 USERS = {
     "admin": "admin123",  # نام کاربری: admin, رمز: admin123
     "employee1": "emp123",
@@ -25,20 +24,24 @@ USERS = {
 
 def check_password():
     """Returns `True` if the user had the correct password."""
+
     def password_entered():
+        # بررسی صحت نام کاربری و رمز عبور
         if st.session_state["username"] in USERS and st.session_state["password"] == USERS[st.session_state["username"]]:
             st.session_state["password_correct"] = True
+            # نکته مهم: ذخیره نام کاربری در یک متغیر جداگانه که با حذف کادر ورودی پاک نشود
+            st.session_state["logged_in_user"] = st.session_state["username"]
             del st.session_state["password"]  # پاک کردن پسورد از حافظه برای امنیت
         else:
             st.session_state["password_correct"] = False
 
     if "password_correct" not in st.session_state:
-        # نمایش فرم لاگین
+        # بار اول: نمایش فرم لاگین
         st.text_input("Username / نام کاربری", key="username")
         st.text_input("Password / رمز عبور", type="password", on_change=password_entered, key="password")
         return False
     elif not st.session_state["password_correct"]:
-        # اگر رمز اشتباه بود
+        # اگر رمز اشتباه بود: نمایش دوباره فرم + خطا
         st.text_input("Username / نام کاربری", key="username")
         st.text_input("Password / رمز عبور", type="password", on_change=password_entered, key="password")
         st.error("😕 نام کاربری یا رمز عبور اشتباه است.")
@@ -49,14 +52,28 @@ def check_password():
 
 # --- بدنه اصلی برنامه ---
 if check_password():
-    current_user = st.session_state["username"]
+    # اصلاح شده: خواندن نام کاربری از متغیر ذخیره شده (نه از کادر ورودی)
+    current_user = st.session_state["logged_in_user"]
     
     # منوی کناری
     st.sidebar.title(f"خوش آمدید، {current_user} 👋")
+    # دکمه خروج
+    if st.sidebar.button("خروج از حساب"):
+        del st.session_state["password_correct"]
+        del st.session_state["logged_in_user"]
+        st.rerun()
+
     menu = st.sidebar.radio("منو", ["ثبت اطلاعات جدید", "داشبورد و گزارش‌ها", "جدول داده‌ها"])
     
     # بارگذاری داده‌ها
-    df = pd.read_csv(FILE_PATH)
+    if os.path.exists(FILE_PATH):
+        df = pd.read_csv(FILE_PATH)
+    else:
+        df = pd.DataFrame(columns=[
+        'Date_Entry', 'User', 'Apartment', 'Guest_Name', 
+        'Check_In', 'Nights', 'Income_Net', 
+        'Cost_Cleaning', 'Cost_Tourism', 'Cost_Other', 'Net_Profit'
+    ])
 
     # --- صفحه 1: ثبت اطلاعات ---
     if menu == "ثبت اطلاعات جدید":
@@ -91,7 +108,7 @@ if check_password():
                 # ساخت رکورد جدید
                 new_data = {
                     'Date_Entry': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                    'User': current_user,  # ذخیره نام کاربری که دیتا را وارد کرده
+                    'User': current_user,
                     'Apartment': apt,
                     'Guest_Name': guest,
                     'Check_In': check_in,
@@ -127,10 +144,12 @@ if check_password():
             
             # نمودار سود بر اساس آپارتمان
             st.subheader("سودآوری به تفکیک آپارتمان")
-            st.bar_chart(df.groupby("Apartment")["Net_Profit"].sum())
+            # چک کردن اینکه ستون‌ها وجود داشته باشند
+            if "Apartment" in df.columns and "Net_Profit" in df.columns:
+                st.bar_chart(df.groupby("Apartment")["Net_Profit"].sum())
             
-            # نمودار عملکرد ماهانه (ساده شده)
-            st.subheader("روند درآمد بر اساس هر رزرو")
+            # نمودار روند
+            st.subheader("روند درآمد")
             st.line_chart(df['Income_Net'])
             
         else:
